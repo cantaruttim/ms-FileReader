@@ -1,0 +1,30 @@
+app:
+  datasources:
+    ms_upload_arquivos:
+      driver-class-name: com.mysql.cj.jdbc.Driver
+      jdbc-url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:db_a}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      username: ${DB_USERNAME:root}
+      password: ${DB_PASSWORD}
+      maximum-pool-size: 10
+      minimum-idle: 5
+          
+    metadata_db:
+      driver-class-name: com.mysql.cj.jdbc.Driver
+      jdbc-url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/ingestion_control?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      username: ${DB_USERNAME:root}
+      password: ${DB_PASSWORD}
+      maximum-pool-size: 5
+      minimum-idle: 2
+
+server:
+  port: 8080
+
+logging:
+  level:
+    br.com.cantarutti: DEBUG
+
+spring:
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 50MB
