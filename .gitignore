@@ -26,4 +26,5 @@ build/
 ### VS Code ###
 .vscode/
 .env
-*.sh
+upload.sh
+run.sh
