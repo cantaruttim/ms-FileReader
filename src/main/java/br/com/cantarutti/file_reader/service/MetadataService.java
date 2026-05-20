@@ -26,12 +26,9 @@ public class MetadataService {
     public void initializeMetadataTable() throws Exception {
         Connection conn = null;
         try {
-            conn = dataSourceManager.getConnection("metadata_db");
-            MetadataTableCreator.createMetadataTableIfNotExists(conn);
+            conn = dataSourceManager.getConnection("ms_upload_arquivos"); 
         } finally {
-            if (conn != null) {
-                try { conn.close(); } catch (Exception e) {}
-            }
+            if (conn != null) try { conn.close(); } catch (Exception e) {}
         }
     }
 

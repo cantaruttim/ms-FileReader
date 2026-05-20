@@ -11,6 +11,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 @Component
 public class DataSourceManager {
+
     private final Map<String, DataSource> dataSources = new ConcurrentHashMap<>();
 
     public DataSourceManager(AppProperties appProperties) {
