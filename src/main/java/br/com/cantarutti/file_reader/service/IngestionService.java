@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
+import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.sql.Connection;
 import java.time.LocalDateTime;
@@ -31,79 +32,56 @@ public class IngestionService {
                            Map<String, String> columnMappings,
                            List<String> uniqueKeys,
                            int batchSize,
-                           String fileName) throws Exception {
+                           String fileName,
+                           String sheetName) throws Exception {
 
-        if (!inputStream.markSupported()) {
-            throw new IllegalArgumentException("InputStream deve suportar mark/reset");
-        }
-        inputStream.mark(Integer.MAX_VALUE);
+        // Converter InputStream para bytes para poder reusar
+        byte[] fileBytes = inputStream.readAllBytes();
 
-        // Contar total de linhas no arquivo
-        int totalRows = countRows(inputStream);
-        inputStream.reset();
+        // Contar total de linhas
+        int totalRows = countRows(fileBytes, sheetName);
 
         // Obter schema das colunas
-        List<Map<String, String>> columnsSchema = getColumnsSchema(inputStream, columnMappings);
-        inputStream.reset();
+        List<Map<String, String>> columnsSchema = getColumnsSchema(fileBytes, columnMappings, sheetName);
 
         Connection connection = null;
         try {
             connection = dataSourceManager.getConnection(targetDatabase);
-            
+
             boolean tableCreated = false;
             if (createTable) {
-                DynamicTableCreator.createTableIfNotExists(inputStream, tableName, connection, columnMappings);
+                DynamicTableCreator.createTableIfNotExists(
+                        new ByteArrayInputStream(fileBytes), tableName, connection, columnMappings, sheetName);
                 tableCreated = true;
-                inputStream.reset();
             }
 
             int newRows = ExcelToRelationalIncrementalImporter.importSheetIncremental(
-                    inputStream, tableName, connection, columnMappings, uniqueKeys, batchSize
+                    new ByteArrayInputStream(fileBytes),
+                    tableName, connection, columnMappings, uniqueKeys, batchSize, sheetName
             );
 
-            // Registrar metadados de SUCESSO usando o construtor do Record
+            // Registrar metadados de SUCESSO
             IngestionMetadataRecord metadata = new IngestionMetadataRecord(
-                    null,                    // id (auto-generated)
-                    targetDatabase,
-                    tableName,
-                    fileName,
-                    tableCreated,
-                    columnsSchema,
-                    uniqueKeys,
-                    totalRows,
-                    newRows,
-                    totalRows - newRows,     // skippedRows
-                    LocalDateTime.now(),
-                    "SUCCESS",
-                    null                     // errorMessage
+                    null, targetDatabase, tableName, fileName,
+                    tableCreated, columnsSchema, uniqueKeys,
+                    totalRows, newRows, totalRows - newRows,
+                    LocalDateTime.now(), "SUCCESS", null
             );
 
             metadataService.registerImport(metadata);
-
             return newRows;
-            
+
         } catch (Exception e) {
-            // Registrar metadados de ERRO usando o construtor do Record
+            // Registrar metadados de ERRO
             IngestionMetadataRecord errorMetadata = new IngestionMetadataRecord(
-                    null,                    // id
-                    targetDatabase,
-                    tableName,
-                    fileName,
-                    false,                   // createdTable
-                    null,                    // columnsSchema
-                    null,                    // uniqueKeys
-                    0,                       // totalRowsInFile
-                    0,                       // newRowsInserted
-                    0,                       // skippedRows
-                    LocalDateTime.now(),
-                    "ERROR",
-                    e.getMessage()
+                    null, targetDatabase, tableName, fileName,
+                    false, null, null, 0, 0, 0,
+                    LocalDateTime.now(), "ERROR", e.getMessage()
             );
-            
+
             try {
                 metadataService.registerImport(errorMetadata);
             } catch (Exception ex) {
-                // Log silencioso do erro ao registrar metadados
                 System.err.println("Erro ao registrar metadados de falha: " + ex.getMessage());
             }
             throw e;
@@ -112,33 +90,30 @@ public class IngestionService {
                 try {
                     connection.close();
                 } catch (Exception e) {
-                    // Log silencioso
+                    System.err.println("Erro ao fechar conexão: " + e.getMessage());
                 }
             }
         }
     }
 
-    private int countRows(InputStream inputStream) throws Exception {
-        Workbook workbook = null;
-        try {
-            workbook = new XSSFWorkbook(inputStream);
-            Sheet sheet = workbook.getSheetAt(0);
-            return sheet.getLastRowNum(); // desconta o cabeçalho
-        } finally {
-            if (workbook != null) {
-                workbook.close();
-            }
+    private int countRows(byte[] fileBytes, String sheetName) throws Exception {
+        try (Workbook workbook = new XSSFWorkbook(new ByteArrayInputStream(fileBytes))) {
+            Sheet sheet = getSheet(workbook, sheetName);
+            return sheet.getLastRowNum();
         }
     }
 
-    private List<Map<String, String>> getColumnsSchema(InputStream inputStream, 
-                                                        Map<String, String> columnMappings) throws Exception {
+    private List<Map<String, String>> getColumnsSchema(byte[] fileBytes,
+                                                        Map<String, String> columnMappings,
+                                                        String sheetName) throws Exception {
         List<Map<String, String>> schema = new ArrayList<>();
-        Workbook workbook = null;
-        try {
-            workbook = new XSSFWorkbook(inputStream);
-            Sheet sheet = workbook.getSheetAt(0);
+        try (Workbook workbook = new XSSFWorkbook(new ByteArrayInputStream(fileBytes))) {
+            Sheet sheet = getSheet(workbook, sheetName);
             Row headerRow = sheet.getRow(0);
+
+            if (headerRow == null) {
+                return schema;
+            }
 
             for (Cell cell : headerRow) {
                 String excelHeader = cell.getStringCellValue().trim();
@@ -151,11 +126,25 @@ public class IngestionService {
                 colInfo.put("db_column", dbColumn);
                 schema.add(colInfo);
             }
-        } finally {
-            if (workbook != null) {
-                workbook.close();
-            }
         }
         return schema;
+    }
+
+    private Sheet getSheet(Workbook workbook, String sheetName) {
+        if (sheetName == null || sheetName.equals("0") || sheetName.isEmpty()) {
+            return workbook.getSheetAt(0);
+        }
+        try {
+            // Tenta como índice numérico
+            int index = Integer.parseInt(sheetName);
+            return workbook.getSheetAt(index);
+        } catch (NumberFormatException e) {
+            // Tenta como nome da aba
+            Sheet sheet = workbook.getSheet(sheetName);
+            if (sheet == null) {
+                throw new IllegalArgumentException("Aba não encontrada: " + sheetName);
+            }
+            return sheet;
+        }
     }
 }

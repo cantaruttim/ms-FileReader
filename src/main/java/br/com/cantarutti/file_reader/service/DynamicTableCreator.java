@@ -15,17 +15,19 @@ public class DynamicTableCreator {
     /**
      * Cria a tabela no banco de dados com base nos cabeçalhos do Excel e inferência de tipos.
      *
-     * @param inputStream      Stream do arquivo Excel (deve suportar reset para uso posterior)
+     * @param inputStream      Stream do arquivo Excel
      * @param tableName        Nome da tabela a ser criada
      * @param connection       Conexão ativa com o banco de dados
      * @param columnMappings   Mapeamento opcional: cabeçalho Excel -> nome da coluna no BD
+     * @param sheetName        Nome ou índice da aba ("0" para primeira, ou nome exato)
      */
     public static void createTableIfNotExists(InputStream inputStream,
                                               String tableName,
                                               Connection connection,
-                                              Map<String, String> columnMappings) throws Exception {
+                                              Map<String, String> columnMappings,
+                                              String sheetName) throws Exception {
         Workbook workbook = new XSSFWorkbook(inputStream);
-        Sheet sheet = workbook.getSheetAt(0);
+        Sheet sheet = getSheet(workbook, sheetName);
         Row headerRow = sheet.getRow(0);
 
         // Mapear cabeçalhos para nomes de colunas no banco
@@ -51,11 +53,33 @@ public class DynamicTableCreator {
         ddl.append(")");
 
         // Executar DDL
-        try (Statement stmt = connection.createStatement()) {
+        Statement stmt = null;
+        try {
+            stmt = connection.createStatement();
             stmt.execute(ddl.toString());
+        } finally {
+            if (stmt != null) {
+                try { stmt.close(); } catch (Exception e) {}
+            }
         }
 
         workbook.close();
+    }
+
+    private static Sheet getSheet(Workbook workbook, String sheetName) {
+        if (sheetName == null || sheetName.equals("0") || sheetName.isEmpty()) {
+            return workbook.getSheetAt(0);
+        }
+        try {
+            int index = Integer.parseInt(sheetName);
+            return workbook.getSheetAt(index);
+        } catch (NumberFormatException e) {
+            Sheet sheet = workbook.getSheet(sheetName);
+            if (sheet == null) {
+                throw new IllegalArgumentException("Aba não encontrada: " + sheetName);
+            }
+            return sheet;
+        }
     }
 
     private static Map<String, String> inferTypes(Sheet sheet, List<String> columnNames, int maxRows) {
@@ -109,7 +133,7 @@ public class DynamicTableCreator {
                     maxLength = Math.max(maxLength, cell.getStringCellValue().length());
                     break;
                 case BOOLEAN:
-                    hasString = true; // Trataremos como texto por simplicidade
+                    hasString = true;
                     break;
                 case FORMULA:
                     try {
@@ -128,7 +152,6 @@ public class DynamicTableCreator {
             }
         }
 
-        // Prioridade: se houver qualquer string, usa VARCHAR; senão tenta data, double, long
         if (hasString) {
             return "VARCHAR(" + Math.max(maxLength, 255) + ")";
         } else if (hasDate && !hasDouble && !hasLong) {
@@ -138,7 +161,7 @@ public class DynamicTableCreator {
         } else if (hasLong) {
             return "BIGINT";
         } else {
-            return "VARCHAR(255)"; // fallback para colunas vazias
+            return "VARCHAR(255)";
         }
     }
 }

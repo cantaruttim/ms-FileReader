@@ -12,6 +12,7 @@ public class IngestionRequest {
     private Map<String, String> columnMappings;
     private List<String> uniqueKeys;
     private int batchSize = 500;
+    private String sheetName;
 
     // Getters e Setters (obrigatórios)
     public String getTargetDatabase() { return targetDatabase; }
@@ -31,6 +32,9 @@ public class IngestionRequest {
 
     public int getBatchSize() { return batchSize; }
     public void setBatchSize(int batchSize) { this.batchSize = batchSize; }
+
+    public String getSheetName() { return sheetName; }
+    public void setSheetName(String sheetName) { this.sheetName = sheetName; }
 
     public static IngestionRequest fromJson(String json) throws Exception {
         ObjectMapper mapper = new ObjectMapper();

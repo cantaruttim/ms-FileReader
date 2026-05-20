@@ -45,7 +45,8 @@ public class IngestionController {
                     request.getColumnMappings(),
                     request.getUniqueKeys(),
                     request.getBatchSize(),
-                    file.getOriginalFilename()  // ← nome do arquivo
+                    file.getOriginalFilename(),  // ← nome do arquivo
+                    request.getSheetName()       // ← nome da aba
             );
 
             return ResponseEntity.ok("Importação concluída. Linhas novas inseridas: " + importedRows);

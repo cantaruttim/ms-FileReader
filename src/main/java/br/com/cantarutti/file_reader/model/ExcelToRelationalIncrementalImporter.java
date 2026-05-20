@@ -19,14 +19,15 @@ public class ExcelToRelationalIncrementalImporter {
             Connection connection,
             Map<String, String> columnMappings,
             List<String> uniqueKeyColumns,
-            int batchSize) throws Exception {
+            int batchSize,
+            String sheetName) throws Exception {
 
         boolean temChave = uniqueKeyColumns != null && !uniqueKeyColumns.isEmpty();
         int totalInserted = 0;
 
         // 1. Abrir Excel e ler cabeçalhos
         Workbook workbook = new XSSFWorkbook(inputStream);
-        Sheet sheet = workbook.getSheetAt(0); // <-- Correto: Sheet do pacote ss
+        Sheet sheet = getSheet(workbook, sheetName);
         Row headerRow = sheet.getRow(0);
         List<String> excelHeaders = new ArrayList<>();
         for (Cell cell : headerRow) {
@@ -166,6 +167,22 @@ public class ExcelToRelationalIncrementalImporter {
 
         return totalInserted;
     }
+
+    private static Sheet getSheet(Workbook workbook, String sheetName) {
+    if (sheetName == null || sheetName.equals("0") || sheetName.isEmpty()) {
+        return workbook.getSheetAt(0);
+    }
+    try {
+        int index = Integer.parseInt(sheetName);
+        return workbook.getSheetAt(index);
+    } catch (NumberFormatException e) {
+        Sheet sheet = workbook.getSheet(sheetName);
+        if (sheet == null) {
+            throw new IllegalArgumentException("Aba não encontrada: " + sheetName);
+        }
+        return sheet;
+    }
+}
 
     // ---------- MÉTODOS AUXILIARES ----------
 
