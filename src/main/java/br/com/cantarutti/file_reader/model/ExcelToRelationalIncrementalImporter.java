@@ -9,10 +9,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 public class ExcelToRelationalIncrementalImporter {
-
-    /**
-     * Importa linhas novas com base em chave única. Retorna número de linhas inseridas.
-     */
+ 
     public static int importSheetIncremental(
             InputStream inputStream,
             String tableName,
