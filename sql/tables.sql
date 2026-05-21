@@ -1,0 +1,1 @@
+select * from detalhamento_gastos
