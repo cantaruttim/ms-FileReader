@@ -27,4 +27,4 @@ build/
 .vscode/
 .env
 upload.sh
-run.sh
+run_server.sh
